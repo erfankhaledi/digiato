@@ -1,0 +1,1563 @@
+jQuery( document ).ready( function ( $ )
+{
+	let editForm ;
+	editForm = jQuery('#dotline-edit-profile-info');
+
+	let internal = location.host.replace( "www.", "" );
+	internal = new RegExp( internal, "i" );
+
+	let a = document.getElementsByTagName( 'a' ); // then, grab every link on the page
+	for ( let i = 0 ; i < a.length ; i++ )
+	{
+		let href = a[i].host; // set the host of each link
+
+		// make sure the href doesn't contain current site's host
+		if ( href && !internal.test( href ) )
+			a[i].setAttribute( 'target', '_blank' ); // if it doesn't, set attributes
+	}
+
+	let $form_modal = jQuery( '.dotline-user-modal' ),
+		$form_login = jQuery( '.dotline-user-dashboard #dotline-core-user-login' ),
+		$form_verify = jQuery( '.dotline-user-dashboard #dotline-core-user-verify' ),
+		$form_register = jQuery( '.dotline-user-dashboard #dotline-core-user-register' ),
+		$form_forgot = jQuery( '.dotline-user-dashboard #dotline-core-user-forgot' ),
+		$form_modal_tab = jQuery( '.dotline-user-dashboard .switcher' ),
+		$tab_login = $form_modal_tab.children( 'li' ).eq( 0 ).children( 'a' ),
+		$tab_register = $form_modal_tab.children( 'li' ).eq( 1 ).children( 'a' ),
+		$back_to_forgot_link = $form_login.find( '.dotline-user-modal-back-to-forgot, .dotline-form-bottom-message a' ),
+		$back_to_login_link = $form_forgot.find( '.dotline-user-modal-back-to-login, .dotline-form-bottom-message a' ),
+		$main_nav = jQuery( '.dotline-user-profile-buttons, .dotline-user-modal-forms' );
+
+	let notify_error_args = {
+		delay : 5000,
+		verticalAlign : "bottom",
+		align : "right",
+		background : "#ff5632",
+		color : "white",
+		animation : true,
+		animationType : "drop",
+		close : true,
+	};
+
+	let notify_success_args = {
+		delay : 5000,
+		verticalAlign : "bottom",
+		align : "right",
+		background : "#0cb848",
+		color : "white",
+		animation : true,
+		animationType : "drop",
+		close : true,
+	};
+
+	function getQueryVariable ( name )
+	{
+		let query = window.location.search.substring( 1 ),
+			params = query.split( '&' );
+
+		for ( let i = 0 ; i < params.length ; i++ )
+		{
+			let pair = params[i].split( '=' );
+			if ( pair[0] === name )
+				return pair[1];
+		}
+
+		return '';
+	}
+
+	function callAjaxGetMobile ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_get_mobile',
+				'mobile' : jQuery( '#dotline-mobile-field-v2' ).val(),
+				'security' : jQuery( '#dotline-get-mobile-security' ).val(),
+				'token' : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeGetMobile' );
+			},
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-mobile-button-v2' ).removeClass( 'button--loading' );
+
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						$form_login.find( '#dotline-mobile-field-v2' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+						jQuery( '#dotline-mobile-field-v2' ).next( 'span' ).html( data.message );
+
+					}
+
+					$( document.body ).trigger( 'dotlineCoreGetMobileError', data );
+				}
+				else
+				{
+					if ( jQuery( '#dotline-login-button-v2' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreGetMobileSuccess', [ data ] );
+					else {
+
+						if (data.notify == 1)
+							jQuery.notify(data.message, notify_success_args);
+						else {
+							jQuery('#dotline-mobile-button-v2').addClass('c-badge--success');
+						}
+
+						modalTriggerAttr = jQuery('#dotline-login-button-v2').data('modal-trigger-attr');
+						jQuery('[data-modal]').removeClass("active");
+						jQuery('#dotline-otp-mobile-field').val( data.data.mobile );
+						jQuery("#dotline-verify-otp-field").prop('disabled', false);
+
+						if ( data.data.password_priority && data.data.user_exists && data.data.user_password )
+						{
+							jQuery('#dotline-login-button-v2').attr(modalTriggerAttr, 'dotline-login-v2');
+							jQuery('[data-modal="dotline-login-v2"]').addClass('active');
+							getOtpBtn = jQuery('[data-modal="dotline-login-v2"]').find('.btn--link');
+							getOtpBtn.attr( 'id', 'dotline-send-otp');
+							getOtpBtn.removeAttr( 'data-modal-btn');
+							//dotline-verify-mobile-v2
+						}
+						else
+						{
+							jQuery('#dotline-login-button-v2').attr(modalTriggerAttr, 'dotline-verify-mobile-v2');
+							jQuery('[data-modal]').removeClass("active");
+							jQuery('[data-modal="dotline-verify-mobile-v2"]').addClass("active");
+
+							//Change texts for register user if user mobile not exist
+							if ( ! data.data.user_exists ) {
+								jQuery('#dotline-get-mobile-title').html(jQuery('#dotline-get-mobile-title').data('dotline-register-txt'));
+								jQuery('#dotline-verify-otp-button').html( '<span>' + jQuery('#dotline-verify-otp-button').data('dotline-register-txt') + '</span>');
+							}
+
+							//Not display login with pass for users that has not password
+							if ( ! data.data.user_password )
+								jQuery('#dotline-login-password-link').remove();
+							else{
+								if ( ! jQuery('#dotline-login-password-link').length){
+									jQuery('#dotline-verify-otp-field').parent('.form_style__group').after('<div id="dotline-login-password-link" class="form_style__group half"><div><a class="btn btn--link" data-modal-btn="dotline-login-v2">ورود با استفاده از رمز عبور</a></div></div>')
+								}
+							}
+							//Run countdown timer
+							resend_sms_countdown_timer_v2 ( )
+						}
+
+					}
+				}
+			}
+		} );
+	}
+
+	function callAjaxVerifyOTP ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_verify_otp',
+				'otp' : jQuery( '#dotline-verify-otp-field' ).val(),
+				'security' : jQuery( '#dotline-verify-otp-security' ).val(),
+				'token' : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeVerifyOTP' );
+				$("#dotline-edit-mobile").bind('click', function(){ return false; });
+				$("#dotline-login-password-link").find('a').removeAttr( 'data-modal-btn' );
+			},
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-verify-otp-button' ).removeClass( 'button--loading' );
+				jQuery("#dotline-edit-mobile").unbind('click');
+				jQuery("#dotline-login-password-link").find('a').attr('data-modal-btn','dotline-login-v2');
+				//
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						$form_login.find( '#dotline-verify-otp-field' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+						jQuery( '#dotline-verify-otp-field' ).next( 'span' ).html( data.message );
+
+					}
+
+					$( document.body ).trigger( 'dotlineCoreVerifyOTPError', data );
+				}
+				else
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+					if ( jQuery( '#dotline-verify-otp-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreVerifyOTPSuccess', [ data, redirectTo ? redirectTo : ajax_login_object.loginredirecturl ] );
+					else {
+
+						if (data.notify == 1)
+							jQuery.notify(data.message, notify_success_args);
+						else {
+							jQuery('#dotline-verify-otp-button').addClass('c-badge--success');
+							jQuery('#dotline-verify-otp-button').html( '<span>' + data.message + '</span>' );
+						}
+
+						jQuery('#dotline-edit-mobile').remove();
+						jQuery('#dotline-login-password-link').remove();
+
+						const urlParams = new URLSearchParams(window.location.search);
+						const url = urlParams.get('redirect_to');
+
+						if ( redirectTo )
+							document.location.href = decodeURIComponent( redirectTo );
+						else if ( ajax_login_object.loginredirecturl != 0 )
+							document.location.href = ajax_login_object.loginredirecturl;
+						else{
+							const url = new URL(window.location.href);
+							url.search = '';
+							window.location.replace(url.toString());
+						}
+					}
+				}
+			}
+		} );
+	}
+
+	function callAjaxLoginWithPassword ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action'   : 'dotline_ajax_login_with_password',
+				'username'   : jQuery( '#dotline-otp-mobile-field' ).val(),
+				'password' : jQuery( '#dotline-login-password' ).val(),
+				'security' : jQuery( '#dotline-login-security' ).val(),
+				'token'    : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeLoginPassword' );
+			},
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-login-password-button' ).removeClass( 'button--loading' );
+
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						$form_login.find( '#dotline-login-password' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+						jQuery( '#dotline-login-password' ).next( 'span' ).html( data.message );
+
+					}
+
+					$( document.body ).trigger( 'dotlineCoreLoginPasswordError', data );
+				}
+				else
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+
+					if ( jQuery( '#dotline-login-password-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreLoginPasswordSuccess', [data, redirectTo ? redirectTo : ajax_login_object.loginredirecturl] );
+					else
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+						else
+						{
+							jQuery( '#dotline-login-password-button' ).addClass( 'c-badge--success' );
+							jQuery( '#dotline-login-password-button' ).html( '<span>' + data.message + '</span>' );
+						}
+
+						if ( redirectTo )
+							document.location.href = decodeURIComponent( redirectTo );
+						else if ( ajax_login_object.loginredirecturl != 0 )
+							document.location.href = ajax_login_object.loginredirecturl;
+						else{
+							const url = new URL(window.location.href);
+							url.search = '';
+							window.location.replace(url.toString());
+						}
+
+					}
+				}
+			}
+		} );
+	}
+
+	function callAjaxLogin ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_login',
+				'username' : jQuery( '#dotline-login-username' ).val(),
+				'password' : jQuery( '#dotline-login-password' ).val(),
+				'security' : jQuery( '#dotline-login-security' ).val(),
+				'token' : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeLogin' );
+			},
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-login-button' ).removeClass( 'button--loading' );
+
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						if ( data.status == 'empty-username' || data.status == 'error' )
+						{
+							$form_login.find( '#dotline-login-username' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+							jQuery( '#dotline-login-username' ).next( 'span' ).html( data.message );
+						}
+
+						if ( data.status == 'empty-password' )
+						{
+							$form_login.find( '#dotline-login-password' ).addClass( 'has-error' ).nextAll().eq( 1 ).addClass( 'is-visible' );
+							jQuery( '#dotline-login-password' ).nextAll().eq( 1 ).html( data.message );
+						}
+					}
+
+					$( document.body ).trigger( 'dotlineCoreLoginError', data );
+				}
+				else
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+
+					if ( jQuery( '#dotline-login-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreLoginSuccess', [data, redirectTo ? redirectTo : ajax_login_object.loginredirecturl] );
+					else
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+						else
+						{
+							jQuery( '#dotline-login-button' ).addClass( 'c-badge--success' );
+							jQuery( '#dotline-login-button' ).html( '<span>' + data.message + '</span>' );
+						}
+
+						if ( redirectTo )
+							document.location.href = decodeURIComponent( redirectTo );
+						else if ( ajax_login_object.loginredirecturl != 0 )
+							document.location.href = ajax_login_object.loginredirecturl;
+						else{
+							const url = new URL(window.location.href);
+							url.search = '';
+							window.location.replace(url.toString());
+						}
+					}
+				}
+			}
+		} );
+	}
+
+	function callAjaxRegister ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_register',
+				'username' : jQuery( '#dotline-register-username' ).val(),
+				'email' : jQuery( '#dotline-register-email' ).val(),
+				'mobile' : jQuery( '#dotline-register-mobile' ).val(),
+				'first_name' : jQuery( '#dotline-register-first-name' ).val(),
+				'last_name' : jQuery( '#dotline-register-last-name' ).val(),
+				'password' : jQuery( '#dotline-register-password' ).val(),
+				'privacy' : jQuery( '#dotline-register-privacy' ).val(),
+				'security' : jQuery( '#dotline-register-security' ).val(),
+				'token' : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeRegister' );
+			},
+			success : function ( data )
+			{
+				let status = data.status;
+
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-register-button' ).removeClass( 'button--loading' );
+
+				if ( status == 'errors' )
+				{
+					let errors = data.errors;
+
+					errors.map( function ( error )
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( error.message, notify_error_args );
+						else
+						{
+							if ( error.status == 'empty-first-name' )
+							{
+								jQuery( '#dotline-register-first-name' ).next( 'span' ).html( error.message );
+								$form_register.find( '#dotline-register-first-name' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+							}
+
+							if ( error.status == 'empty-last-name' )
+							{
+								jQuery( '#dotline-register-last-name' ).next( 'span' ).html( error.message );
+								$form_register.find( '#dotline-register-last-name' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+							}
+
+							if ( error.status == 'empty-email' || error.status == 'incorrect-email' || error.status == 'duplicate-email' )
+							{
+								jQuery( '#dotline-register-email' ).next( 'span' ).html( error.message );
+								$form_register.find( '#dotline-register-email' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+							}
+
+							if ( error.status == 'empty-username' || error.status == 'duplicate-username' )
+							{
+								jQuery( '#dotline-register-username' ).next( 'span' ).html( error.message );
+								$form_register.find( '#dotline-register-username' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+							}
+
+							if ( error.status == 'empty-mobile' || error.status == 'incorrect-mobile' || error.status == 'duplicate-mobile' )
+							{
+								jQuery( '#dotline-register-mobile' ).next( 'span' ).html( error.message );
+								$form_register.find( '#dotline-register-mobile' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+							}
+
+							if ( error.status == 'empty-password' || error.status == 'password-is-not-safe' )
+							{
+								jQuery( '#dotline-register-password' ).nextAll().eq( 1 ).html( error.message );
+								$form_register.find( '#dotline-register-password' ).addClass( 'has-error' ).nextAll().eq( 1 ).addClass( 'is-visible' );
+							}
+						}
+					} );
+
+					$( document.body ).trigger( 'dotlineCoreRegisterError', data );
+				}
+				else if ( status == 'error' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+						jQuery( '.register-error-message' ).html( data.message ).addClass( 'is-visible' );
+
+					$( document.body ).trigger( 'dotlineCoreRegisterError', data );
+				}
+				else
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+
+					if ( jQuery( '#dotline-register-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreRegisterSuccess', [data, redirectTo ? redirectTo : ajax_login_object.registerredirecturl] );
+					else
+					{
+						jQuery( '#dotline-register-button' ).removeClass( 'button--loading' );
+
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+						else
+						{
+							jQuery( '#dotline-register-button' ).addClass( 'c-badge--success' );
+							jQuery( '#dotline-register-button' ).html( '<span>' + data.message + '</span>' );
+						}
+
+						if ( redirectTo )
+							document.location.href = decodeURIComponent( redirectTo );
+						else if ( ajax_login_object.registerredirecturl != 0 )
+							document.location.href = ajax_login_object.registerredirecturl;
+						else{
+							const url = new URL(window.location.href);
+							url.search = '';
+							window.location.replace(url.toString());
+						}
+					}
+				}
+			}
+		} );
+	}
+
+	function callAjaxForgot ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_forgot',
+				'username' : jQuery( '#dotline-forgot-username' ).val(),
+				'security' : jQuery( '#dotline-forgot-security' ).val(),
+				'token' : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeForgot' );
+			},
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-forgot-button' ).removeClass( 'button--loading' );
+
+				if ( data.status == 'invalid-user' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						jQuery( '#dotline-forgot-username' ).next( 'span' ).html( data.message );
+						$form_forgot.find( '#dotline-forgot-username' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+					}
+
+					$( document.body ).trigger( 'dotlineCoreForgotError', data );
+				}
+
+				if ( data.status == 'success' )
+				{
+					if ( jQuery( '#dotline-forgot-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreForgotSuccess', [data, ''] );
+					else
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+						else
+							jQuery( '#dotline-core-user-forgot .dotline-form-message' ).html( data.message );
+					}
+				}
+
+				if ( data.status == 'fail' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+						jQuery( '#dotline-core-user-forgot .dotline-form-message' ).html( data.message );
+
+					$( document.body ).trigger( 'dotlineCoreForgotError', data );
+				}
+			}
+		} );
+	}
+
+	function callVerifyAjaxForgot ( token = '' )
+	{
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			//async: false,
+			data : {
+				'action' : 'dotline_ajax_verify',
+				'code' : jQuery( '#dotline-verify-form #code' ).val(),
+				'security' : jQuery( '#dotline-verify-form #dotline-verify-security' ).val(),
+				'token' : token
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeVerifyForgot' );
+			},
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-verify-button' ).removeClass( 'button--loading' );
+
+				if ( data.status == 'empty-code' || data.status == 'invalid-code' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						jQuery( '#code' ).next( 'span' ).html( data.message );
+						$form_verify.find( '#code' ).toggleClass( 'has-error' ).next( 'span' ).toggleClass( 'is-visible' );
+					}
+
+					$( document.body ).trigger( 'dotlineCoreVerifyForgotError', data );
+				}
+				if ( data.status == 'success' )
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+
+					if ( jQuery( '#dotline-verify-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreVerifyForgotSuccess', [data, redirectTo ? redirectTo : ajax_login_object.loginredirecturl] );
+					else
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+						else
+						{
+							jQuery( '#dotline-verify-button' ).addClass( 'c-badge--success' );
+							jQuery( '#dotline-verify-button' ).html( '<span>' + data.message + '</span>' );
+						}
+
+
+						if ( editForm != undefined ){
+							//submit form
+							var submitButton = jQuery("#edit-account-submit");
+							var submitName = submitButton.attr("name");
+							var submitValue = submitButton.val();
+							var hiddenInput = '<input type="hidden" name="' + submitName + '" value="' + submitValue + '">';
+							editForm.append(hiddenInput);
+							editForm.off('submit'); // Remove the previous event handler
+							editForm.submit();
+						}
+						else {
+							if (redirectTo)
+								document.location.href = decodeURIComponent(redirectTo);
+							else if (ajax_login_object.loginredirecturl != 0)
+								document.location.href = ajax_login_object.loginredirecturl;
+							else {
+								const url = new URL(window.location.href);
+								url.search = '';
+								window.location.replace(url.toString());
+							}
+						}
+					}
+				}
+			}
+		} );
+	}
+
+	function callAjaxAuthMobile( form ){
+
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_verify',
+				'code' : jQuery( '#dotline-verify-form #code' ).val(),
+				'security' : jQuery( '#dotline-verify-form #dotline-verify-security' ).val(),
+			},
+
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeAuthMobile' );
+			},
+
+			success : function ( data )
+			{
+				jQuery( '.error-message' ).removeClass( 'is-visible' );
+				jQuery( '.has-error' ).removeClass( 'has-error' );
+				jQuery( '#dotline-verify-button' ).removeClass( 'button--loading' );
+
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						jQuery( '#code' ).next( 'span' ).html( data.message );
+						$form_verify.find( '#code' ).toggleClass( 'has-error' ).next( 'span' ).toggleClass( 'is-visible' );
+					}
+
+					$( document.body ).trigger( 'dotlineCoreAuthMobileError', data );
+				}
+				if ( data.status == 'success' )
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+
+					if ( jQuery( '#dotline-verify-button' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreAuthMobileSuccess', [data, redirectTo ? redirectTo : ajax_login_object.loginredirecturl] );
+					else
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+						else
+						{
+							jQuery( '#dotline-verify-button' ).addClass( 'c-badge--success' );
+							jQuery( '#dotline-verify-button' ).html( '<span>' + data.message + '</span>' );
+						}
+
+						if ( redirectTo )
+							document.location.href = decodeURIComponent( redirectTo );
+						else if ( ajax_login_object.loginredirecturl != 0 )
+							document.location.href = ajax_login_object.loginredirecturl;
+						else{
+							const url = new URL(window.location.href);
+							url.search = '';
+							window.location.replace(url.toString());
+						}
+					}
+				}
+			}
+		} );
+	}
+
+	//ajax get mobile for login or register
+	jQuery( '#dotline-mobile-button-v2' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if (typeof ajax_login_object.recaptcha_site_key !== 'undefined')
+			grecaptcha.ready(function() {
+				grecaptcha.execute(ajax_login_object.recaptcha_site_key, {action: 'get-mobile'}).then(function(token) {
+					callAjaxGetMobile(token);
+				});
+			});
+		else
+			callAjaxGetMobile();
+	} );
+
+	//ajax get mobile for login or register
+	jQuery( '#dotline-verify-otp-button' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if (typeof ajax_login_object.recaptcha_site_key !== 'undefined')
+			grecaptcha.ready(function() {
+				grecaptcha.execute(ajax_login_object.recaptcha_site_key, {action: 'verify-otp'}).then(function(token) {
+					callAjaxVerifyOTP(token);
+				});
+			});
+		else
+			callAjaxVerifyOTP();
+	} );
+
+	// ajax login with password (in v2 login/register)
+	jQuery( '#dotline-login-password-button' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if (typeof ajax_login_object.recaptcha_site_key !== 'undefined')
+			grecaptcha.ready(function() {
+				grecaptcha.execute(ajax_login_object.recaptcha_site_key, {action: 'login'}).then(function(token) {
+					callAjaxLoginWithPassword(token);
+				});
+			});
+		else
+			callAjaxLoginWithPassword();
+	} );
+
+	// ajax login
+	jQuery( '#dotline-login-button' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if (typeof ajax_login_object.recaptcha_site_key !== 'undefined')
+			grecaptcha.ready(function() {
+				grecaptcha.execute(ajax_login_object.recaptcha_site_key, {action: 'login'}).then(function(token) {
+					callAjaxLogin(token);
+				});
+			});
+		else
+			callAjaxLogin();
+	} );
+
+	// ajax register
+	jQuery( '#dotline-register-button' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+		let notify = jQuery( this ).data( 'notify' ),
+			privacy = jQuery( '#dotline-register-privacy' );
+
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if ( privacy.length && !privacy.is( ':checked' ) )
+		{
+			jQuery( '#dotline-register-button' ).removeClass( 'button--loading' );
+
+			if ( privacy.data( 'trigger' ) == 1 )
+			{
+				$( document.body ).trigger( 'dotlineCoreRegisterError', {
+					errors : [{
+						status : 'empty-privacy',
+						message : 'شما باید قوانین و شرایط ثبت نام را بپذیرید!'
+					}],
+					notify : 0,
+					status : 'errors'
+				} );
+			}
+			else if ( notify == 1 )
+				jQuery.notify( 'شما باید قوانین و شرایط ثبت نام را بپذیرید!', notify_error_args );
+			else
+			{
+				$form_register.find( '#dotline-register-privacy' ).toggleClass( 'has-error' ).next( 'span' ).toggleClass( 'is-visible' );
+				privacy.next( 'span' ).html( 'شما باید قوانین و شرایط ثبت نام را بپذیرید!' );
+			}
+		}
+		else
+		{
+			if ( typeof ajax_login_object.recaptcha_site_key !== 'undefined' )
+				grecaptcha.ready( function () {
+					grecaptcha.execute( ajax_login_object.recaptcha_site_key, { action : 'signup' } ).then( function ( token ) {
+						callAjaxRegister( token );
+					} );
+				} );
+			else
+				callAjaxRegister();
+		}
+	} );
+
+	// Ajax forgot password
+	jQuery( document ).on( 'click', '#dotline-forgot-button', function ( e )
+	{
+		e.preventDefault();
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if ( typeof ajax_login_object.recaptcha_site_key !== 'undefined' )
+			grecaptcha.ready( function () {
+				grecaptcha.execute( ajax_login_object.recaptcha_site_key, { action : 'forgot' } ).then( function ( token ) {
+					callAjaxForgot( token );
+				} );
+			} );
+		else
+			callAjaxForgot();
+	} );
+
+	// ajax verify
+	jQuery( '#dotline-verify-button' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if ( typeof ajax_login_object.recaptcha_site_key !== 'undefined' )
+			grecaptcha.ready( function () {
+				grecaptcha.execute( ajax_login_object.recaptcha_site_key, { action : 'verify-forgot' } ).then( function ( token ) {
+					callVerifyAjaxForgot( token );
+				} );
+			} );
+		else
+			callVerifyAjaxForgot();
+	} );
+	// ajax authenticate mobile
+	/*jQuery( '#dotline-verify-button' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+		jQuery( this ).toggleClass( 'button--loading' );
+
+		if ( typeof ajax_login_object.recaptcha_site_key !== 'undefined' )
+			grecaptcha.ready( function () {
+				grecaptcha.execute( ajax_login_object.recaptcha_site_key, { action : 'verify-forgot' } ).then( function ( token ) {
+					callVerifyAjaxForgot( token );
+				} );
+			} );
+		else
+			callVerifyAjaxForgot();
+	} );
+*/
+
+	jQuery( document ).on( 'click', '#dotline-resend-button', function ( e )
+	{
+		e.preventDefault();
+
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_resend_sms',
+			},
+			success : function ( data )
+			{
+				if ( data.notify == 1 )
+					jQuery.notify( data.message, data.status == 'success' ? notify_success_args : notify_error_args );
+				else
+					jQuery( '#dotline-resend-button' ).html( '<span>' + data.message + '</span>' );
+			}
+		} );
+
+		resend_sms_countdown_timer();
+	} );
+
+	jQuery( document ).on( 'click', '#dotline-send-otp', function ( e )
+	{
+		e.preventDefault();
+		jQuery(this).attr( 'href' , 'javascript:void(0)');
+		jQuery(this).text('لطفا چند لحظه صبر کنید...');
+		loginPasswordBtn = jQuery('#dotline-login-password-button');
+		loginPasswordBtn.prop('disabled', true);
+
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_otp_resend_sms',
+				'mobile' : jQuery( '#dotline-otp-mobile-field' ).val(),
+
+			},
+			success : function ( data )
+			{
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						$form_login.find( '#dotline-send-otp' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+						jQuery( '#dotline-send-otp' ).next( 'span' ).html( data.message );
+					}
+
+					$( document.body ).trigger( 'dotlineCoreOTPSendError', data );
+				}
+				else
+				{
+					if (data.notify == 1)
+						jQuery.notify(data.message, notify_success_args);
+
+					jQuery('#dotline-verify-otp-field').prop('disabled', false);
+					jQuery('#code').prop('disabled', false);
+					jQuery('#dotline-otp-resend-button').attr( 'href' , '#');
+
+					jQuery('#dotline-send-otp').attr('data-modal-btn', 'dotline-verify-mobile-v2');
+					jQuery('#dotline-send-otp').text('ورود با استفاده از رمز یک بار مصرف');
+					loginPasswordBtn.prop('disabled', false);
+					jQuery('#dotline-send-otp').removeAttr('id');
+					jQuery('[data-modal]').removeClass('active');
+					jQuery('[data-modal="dotline-verify-mobile-v2"]').addClass('active');
+					//dotline-verify-mobile-v2
+				}
+			}
+		} );
+
+		resend_sms_countdown_timer_v2();
+	} );
+
+	jQuery( document ).on( 'click', '#dotline-edit-mobile', function ( e ) {
+		e.preventDefault();
+		jQuery("[data-modal]").removeClass("active");
+		jQuery('[data-modal="dotline-mobile-v2"]').addClass("active");
+		jQuery( '#dotline-mobile-field-v2' ).val( jQuery( '#dotline-mobile-field-v2' ).val() );
+
+	});
+
+
+	jQuery( document ).on( 'click', '#dotline-otp-resend-button', function ( e )
+	{
+		e.preventDefault();
+		jQuery(this).attr( 'href' , 'javascript:void(0)')
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_otp_resend_sms',
+				'mobile' : jQuery( '#dotline-otp-mobile-field' ).val(),
+
+			},
+			success : function ( data )
+			{
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						$form_login.find( '#dotline-verify-otp-field' ).addClass( 'has-error' ).next( 'span' ).addClass( 'is-visible' );
+						jQuery( '#dotline-verify-otp-field' ).next( 'span' ).html( data.message );
+						jQuery( '#code' ).next( 'span' ).html( data.message );
+					}
+
+					$( document.body ).trigger( 'dotlineCoreOTPResendError', data );
+				}
+				else
+				{
+					if (data.notify == 1)
+						jQuery.notify(data.message, notify_success_args);
+
+					jQuery('#dotline-verify-otp-field').prop('disabled', false);
+					jQuery('#code').prop('disabled', false);
+					jQuery('#dotline-otp-resend-button').attr( 'href' , '#')
+				}
+			}
+		} );
+
+		resend_sms_countdown_timer_v2();
+	} );
+
+	resend_sms_countdown_timer();
+
+	jQuery( document ).on( 'click', '#dotline-delete-account', function ( e )
+	{
+		e.preventDefault();
+		jQuery( this ).toggleClass( 'button--loading' );
+		jQuery( this ).attr( 'href' , 'javascript:void(0)')
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_delete_account',
+			},
+			success : function ( data )
+			{
+				jQuery( '#dotline-delete-account' ).removeClass( 'button--loading' );
+				if ( data.status != 'success' )
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						jQuery( '#dotline-delete-account' ).next( 'span' ).html( data.message );
+					}
+
+					$( document.body ).trigger( 'dotlineCoreDeleteAccountError', data );
+				}
+				else
+				{
+					let redirectTo = getQueryVariable( 'redirect_to' );
+
+					if ( jQuery( '#dotline-delete-account' ).data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreDeleteAccountSuccess', [data, redirectTo ? redirectTo : ajax_login_object.loginredirecturl] );
+					else {
+						if (data.notify == 1)
+							jQuery.notify(data.message, notify_success_args);
+
+						jQuery( '#dotline-delete-account' ).html( '<span>' + data.message + '</span>')
+						if ( redirectTo )
+							document.location.href = decodeURIComponent( redirectTo );
+						else
+							document.location.href = document.location.origin;
+					}
+				}
+			}
+		} );
+
+	} );
+
+
+
+	jQuery( document ).on( 'click', '#dotline-resend-email', function ( e )
+	{
+		e.preventDefault();
+
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_resend_email',
+			},
+			success : function ( data )
+			{
+				if ( data.notify == 1 )
+				{
+					jQuery.notify( data.message, notify_success_args );
+				}
+				else
+					jQuery( '.resend-email-button-fieldset' ).html( '<span class="color-success">' + data.message + '</span>' );
+
+				jQuery( this ).toggleClass( 'button--loading' );
+			}
+		} );
+	} );
+
+	// Hide error message
+	jQuery( '.dotline-form #dotline-login-password, .dotline-form #dotline-register-password' ).on( 'click', function ()
+	{
+		if ( jQuery( this ).hasClass( "has-error" ) )
+			jQuery( this ).removeClass( 'has-error' ).nextAll().eq( 1 ).removeClass( 'is-visible' );
+	} );
+
+	jQuery( '.dotline-form .username, .dotline-form .first-name, .dotline-form .last-name, .dotline-form .email, .dotline-form .password, .dotline-form input' ).on( 'click', function ()
+	{
+		if ( jQuery( this ).hasClass( "has-error" ) )
+			jQuery( this ).removeClass( 'has-error' ).next( 'span' ).removeClass( 'is-visible' );
+	} );
+
+	// forgot password link
+	jQuery( '.forgot-link' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+		jQuery( '#dotline-login-form' ).addClass( 'hide-form' );
+		jQuery( '#dotline-forgot-form' ).removeClass( 'hide-form' );
+	} );
+
+	jQuery( '.back-to-login-link' ).on( 'click', function ( e )
+	{
+		e.preventDefault();
+		jQuery( '#dotline-login-form' ).removeClass( 'hide-form' );
+		jQuery( '#dotline-forgot-form' ).addClass( 'hide-form' );
+	} );
+
+	jQuery( document ).on( 'click', '#dotline-reset-password-button', function ( e )
+	{
+		let button = jQuery( this );
+
+		button.toggleClass( 'button--loading' );
+
+		jQuery.ajax( {
+			type : 'POST',
+			dataType : 'json',
+			url : ajax_login_object.ajaxurl,
+			data : {
+				'action' : 'dotline_ajax_reset_password',
+				'security' : jQuery( '#dotline-reset-password-security' ).val(),
+				'user_key' : jQuery( '#dotline-user-key' ).val(),
+				'user_login' : jQuery( '#dotline-user-login' ).val(),
+				'new_password' : jQuery( '#dotline-new-password' ).val(),
+				'confirm_new_password' : jQuery( '#dotline-confirm-new-password' ).val(),
+			},
+			beforeSend : function ()
+			{
+				$( document.body ).trigger( 'dotlineCoreBeforeResetPassword' );
+			},
+			success : function ( data )
+			{
+				button.removeClass( 'button--loading' );
+
+				if ( data.status == 'success' )
+				{
+					if ( button.data( 'trigger-success' ) == 1 )
+						$( document.body ).trigger( 'dotlineCoreResetPasswordSuccess', [data, ajax_login_object.loginredirecturl] );
+					else
+					{
+						if ( data.notify == 1 )
+							jQuery.notify( data.message, notify_success_args );
+
+						if ( ajax_login_object.loginredirecturl != 0 )
+							document.location.href = ajax_login_object.loginredirecturl;
+						else{
+							const url = new URL(window.location.href);
+							url.search = '';
+							window.location.replace(url.toString());
+						}
+					}
+				}
+				else
+				{
+					if ( data.notify == 1 )
+						jQuery.notify( data.message, notify_error_args );
+					else
+					{
+						button.parents( '#reset-password' ).find( '.dotline-error-message' ).html( '<span>' + data.message + '</span>' );
+						$( document.body ).trigger( 'dotlineCoreResetPasswordError', data );
+					}
+				}
+			}
+		} );
+
+		e.preventDefault();
+	} );
+
+	jQuery( '#edit-account-submit' ).on( 'click', function ()
+	{
+		if ( jQuery(this).data('dotline-auth-mobile') == 'on' ){
+			editForm.submit(function(e){
+				e.preventDefault();
+			});
+
+			jQuery( this ).toggleClass( 'button--loading' );
+
+			if ( jQuery( '#edit-account-mobile' ).data('dotline-changed') == true ){
+
+				//call ajax for verify format and Non-duplication of mobile number
+				jQuery.ajax( {
+					type : 'POST',
+					dataType : 'json',
+					url : ajax_login_object.ajaxurl,
+					data : {
+						'action'   : 'dotline_ajax_verify_mobile',
+						'mobile'   : jQuery( '#edit-account-mobile' ).val(),
+						'send_sms' : 'on'
+					},
+					success : function ( data )
+					{
+						jQuery( '#edit-account-submit' ).removeClass( 'button--loading' );
+						jQuery( '.c-main-wrapper' ).remove();
+
+						if ( data.status != 'success' )
+						{
+							if ( data.notify == 1 )
+								jQuery.notify( data.message, notify_error_args );
+							else
+							{
+								jQuery("#dotline-edit-profile-info").before('<div class="c-main-wrapper"><div class="c-badge c-badge--error c-badge--message"><i class="fas fa-times"></i><p>' + data.message + '</p></div></div>');
+								jQuery('html, body').animate({ scrollTop: editForm.offset().top - 200 }, 1000);
+							}
+
+							jQuery( document.body ).trigger( 'dotlineCoreVerifyMobileError', data );
+						}
+						else
+						{
+							if ( jQuery( '#edit-account-submit' ).data( 'trigger-success' ) == 1 )
+								jQuery( document.body ).trigger( 'dotlineCoreVerifyMobileSuccess', [data] );
+							else {
+								if (data.notify == 1)
+									jQuery.notify(data.message, notify_success_args);
+
+								jQuery('[data-modal="verify-mobile"]').addClass('active');
+								jQuery('#dotline-otp-resend-button').attr('href', '#');
+
+								jQuery('#dotline-otp-mobile-field').val( data.data.mobile );
+								jQuery("#code").prop('disabled', false);
+
+								//Run countdown timer
+								resend_sms_countdown_timer_v2 ( )
+							}
+						}
+
+					}
+				} );
+			}
+			else {
+				//submit form
+				editForm.off('submit'); // Remove the previous event handler
+				editForm.submit();
+			}
+		}
+
+	} );
+
+	//open modal
+	$main_nav.on( 'click', function ( event )
+	{
+		// on mobile close submenu
+		$main_nav.children( 'ul' ).removeClass( 'is-visible' );
+		//show modal layer
+		$form_modal.addClass( 'is-visible' );
+		//show the selected form
+		( jQuery( event.target ).is( '.register' ) ) ? register_selected() : login_selected();
+	} );
+
+	// close modal
+	$form_modal.on( 'click', function ( event )
+	{
+		if ( jQuery( event.target ).is( $form_modal ) || jQuery( event.target ).is( '.close-form' ) )
+			$form_modal.removeClass( 'is-visible' );
+	} );
+
+	// close modal when clicking the esc keyboard button
+	jQuery( document ).keyup( function ( event )
+	{
+		if ( event.which == '27' )
+			$form_modal.removeClass( 'is-visible' );
+	} );
+
+	//switch from a tab to another
+	$form_modal_tab.on( 'click', function ( event )
+	{
+		event.preventDefault();
+		( jQuery( event.target ).is( $tab_login ) ) ? login_selected() : register_selected();
+	} );
+
+	//hide or show password
+	jQuery( '.hide-password' ).on( 'click', function ()
+	{
+		let $this = jQuery( this ),
+			$password_field = $this.prev( 'input' );
+
+		( 'password' == $password_field.attr( 'type' ) ) ? $password_field.attr( 'type', 'text' ) : $password_field.attr( 'type', 'password' );
+		( 'نمایش' == $this.text() ) ? $this.text( 'مخفی' ) : $this.text( 'نمایش' );
+
+		//focus and move cursor to the end of input field
+		$password_field.putCursorAtEnd();
+	} );
+
+	//show forgot form
+	$back_to_forgot_link.on( 'click', function ( event )
+	{
+		event.preventDefault();
+		forgot_selected();
+	} );
+
+	//back to login from the forgot form
+	$back_to_login_link.on( 'click', function ( event )
+	{
+		event.preventDefault();
+		login_selected();
+	} );
+
+	function login_selected ()
+	{
+		$form_login.addClass( 'is-selected' );
+		$form_register.removeClass( 'is-selected' );
+		$form_forgot.removeClass( 'is-selected' );
+		$tab_login.addClass( 'selected' );
+		$tab_register.removeClass( 'selected' );
+	}
+
+	function register_selected ()
+	{
+		$form_login.removeClass( 'is-selected' );
+		$form_register.addClass( 'is-selected' );
+		$form_forgot.removeClass( 'is-selected' );
+		$tab_login.removeClass( 'selected' );
+		$tab_register.addClass( 'selected' );
+	}
+
+	function forgot_selected ()
+	{
+		$form_login.removeClass( 'is-selected' );
+		$form_register.removeClass( 'is-selected' );
+		$form_forgot.addClass( 'is-selected' );
+	}
+} );
+
+//credits https://css-tricks.com/snippets/jquery/move-cursor-to-end-of-textarea-or-input/
+jQuery.fn.putCursorAtEnd = function ()
+{
+	return this.each( function ()
+	{
+		// If this function exists...
+		if ( this.setSelectionRange )
+		{
+			// ... then use it (Doesn't work in IE)
+			// Double the length because Opera is inconsistent about whether a carriage return is one character or two. Sigh.
+			let len = jQuery( this ).val().length * 2;
+			this.setSelectionRange( len, len );
+		}
+		else
+		{
+			// ... otherwise replace the contents with itself
+			// (Doesn't work in Google Chrome)
+			jQuery( this ).val( jQuery( this ).val() );
+		}
+	} );
+};
+
+let js = {
+
+	init : function ()
+	{
+		js.tabs();
+	},
+
+	tabs : function ()
+	{
+		jQuery( '.c-sidebar__profile-nav ul li a' ).click( function ( event )
+		{
+			let tabItem = jQuery( this ).data( "tab" );
+
+			if ( tabItem )
+			{
+				//active class to tab navigation
+				jQuery( '.c-sidebar__profile-nav ul li' ).removeClass( 'is-active' );
+				jQuery( this ).parent( 'li' ).addClass( 'is-active' );
+
+				//show/hide tab content
+
+				jQuery( '.c-tab-content' ).hide();
+				jQuery( tabItem ).show();
+
+				//add active class to active tab content
+				jQuery( '.c-tab-content' ).removeClass( 'is-active' );
+				jQuery( tabItem ).addClass( 'is-active' );
+
+				//prevent window to jump to top
+				event.preventDefault();
+				return false;
+			}
+		} )
+	},
+};
+
+jQuery( document ).ready( function ()
+{
+	js.init();
+
+	//data-dotline-change-tracking
+	var changeTrackingInitialValue = jQuery('input[data-dotline-change-tracking="on"]').val();
+
+	// Add a change event listener to the input field
+	jQuery('input[data-dotline-change-tracking="on"]').on('change', function() {
+		if(jQuery(this).val() !== changeTrackingInitialValue) {
+			jQuery(this).attr('data-dotline-changed', 'true');
+		} else {
+			jQuery(this).removeAttr('data-dotline-changed');
+		}
+	});
+
+	if ( typeof jQuery( {} ).croppie == 'function' ){
+		croppie_avatar_upload();
+	}
+
+} );
+
+// Countdown timer for resend verification code
+function resend_sms_countdown_timer ()
+{
+	let counter = ajax_login_object.smsDelayMinutes * 60;
+	let interval = setInterval( function ()
+	{
+		counter--;
+		if ( counter <= 0 )
+		{
+			clearInterval( interval );
+			jQuery( '.dotline-verify-message' ).html( "<a href='#' id='dotline-resend-button' onclick='return false;'>" + jQuery( '.dotline-verify-message' ).data( 'resend-message' ) + "</a>" );
+		}
+		else
+			jQuery( '.dotline-verify-message' ).html( '<span id="timer"><span id="time">' + counter + '</span> ثانیه تا دریافت مجدد کد تایید</span>' )
+
+	}, 1000 );
+}
+
+// Countdown timer for resend verification code in v2 login/register
+let intervalV2;
+function resend_sms_countdown_timer_v2 ( remainingTime = false )
+{
+	clearInterval(intervalV2);
+	let timer2;
+	if ( remainingTime )
+		timer2 = remainingTime;
+	else
+		timer2 = ajax_login_object.smsDelayMinutes + ':00';
+	intervalV2 = setInterval( function ()
+	{
+		let timer = timer2.split(':');
+		let minutes = parseInt(timer[0], 10);
+		let seconds = parseInt(timer[1], 10);
+		--seconds;
+		minutes = (seconds < 0) ? --minutes : minutes;
+		if (minutes < 0)
+		{
+			jQuery( '.dotline-otp-countdown' ).html( "<a href='#' id='dotline-otp-resend-button' onclick='return false;'>" + jQuery( '.dotline-otp-countdown' ).data( 'resend-message' ) + "</a>" );
+			jQuery("#dotline-verify-otp-field").prop('disabled', true);
+			jQuery("#code").prop('disabled', true);
+			clearInterval(intervalV2);
+
+		}else
+		{
+			seconds = (seconds < 0) ? 59 : seconds;
+			seconds = (seconds < 10) ? '0' + seconds : seconds;
+			jQuery('.dotline-otp-countdown').html('<span id="timer">' + minutes + ':' + seconds + '</span>');
+			timer2 = minutes + ':' + seconds;
+		}
+	}, 1000 );
+}
+
+function croppie_avatar_upload ()
+{
+	let $uploadCrop;
+	$uploadCrop = jQuery( '#avatar-upload-preview' ).croppie( {
+		viewport : {
+			width : 150,
+			height : 150,
+			//type : 'circle'
+		},
+		//enableExif : true,
+	} );
+
+	function readFile ( input )
+	{
+		if ( input.files && input.files[0] )
+		{
+			jQuery('#avatar-upload-preview').removeClass('ready');
+			let reader = new FileReader();
+			if ( input.files[0].size / 1024 / 1024 > 1 ){
+				jQuery( '#dotline-file-upload-message' ).html('<span>حجم فایل نباید بیش از یک مگابایت باشد.</span>');
+			}
+			else if ( input.files[0].type != 'image/jpeg' && input.files[0].type != 'image/jpg' && input.files[0].type != 'image/png' && input.files[0].type != 'application/pdf' ){
+				jQuery( '#dotline-file-upload-message' ).html('<span>فقط پسوندهای jpg، png و  pdf مورد قبول است.</span>');
+			}
+			else {
+				jQuery( '#dotline-file-upload-message' ).html('');
+				reader.onload = function (e) {
+					jQuery('#avatar-upload-preview').addClass('ready');
+					jQuery('.avatar-upload-wrapper').css('display', 'block');
+					jQuery('.avatar_pic, .dotline-avatar-pic').remove();
+
+					$uploadCrop.croppie('bind', {
+						url: e.target.result
+					}).then(function () {
+						console.log('jQuery bind complete');
+					});
+				}
+
+				reader.readAsDataURL(input.files[0]);
+			}
+		}
+		else
+			swal( "Sorry - your browser doesn't support the FileReader API" );
+	}
+
+
+
+	jQuery( '#edit-account-submit' ).on( 'click', function () {
+		if (jQuery('#avatar-upload-preview').hasClass('ready')) {
+			$uploadCrop.croppie('result', {
+				type: 'base64',
+				size: 'viewport',
+				format: 'jpeg',
+				circle: false
+			}).then(function (resp) {
+				jQuery("[name='simple-local-avatar']").val(resp);
+			});
+		}
+	});
+
+	jQuery( '#file' ).on( 'change', function () { readFile( this ); } );
+
+}
+
+//==================================
+// Micro Modal
+//==================================
+
+jQuery( document ).ready( function () {
+	initMicroModal( 'dotline-user-modal-forms' );
+} );
+
+function initMicroModal ( modalEl, onCloseFnc, onShowFnc )
+{
+	if ( onCloseFnc && onShowFnc )
+	{
+		MicroModal.init( modalEl, {
+			onClose : onCloseFnc,
+			onShow : onShowFnc,
+			closeTrigger : 'data-microModal-close',
+			openClass : 'is-open',
+			disableScroll : true,
+			awaitOpenAnimation : true,
+			awaitCloseAnimation : true
+		} );
+	}
+	else if ( onCloseFnc )
+	{
+		MicroModal.init( modalEl, {
+			onClose : onCloseFnc,
+			closeTrigger : 'data-microModal-close',
+			openClass : 'is-open',
+			disableScroll : true,
+			awaitOpenAnimation : true,
+			awaitCloseAnimation : true
+		} );
+	}
+	else if ( onShowFnc )
+	{
+		MicroModal.init( modalEl, {
+			onShow : onShowFnc,
+			closeTrigger : 'data-microModal-close',
+			openClass : 'is-open',
+			disableScroll : true,
+			awaitOpenAnimation : true,
+			awaitCloseAnimation : true
+		} );
+	}
+	else
+	{
+		MicroModal.init( modalEl, {
+			closeTrigger : 'data-microModal-close',
+			openClass : 'is-open',
+			disableScroll : true,
+			awaitOpenAnimation : true,
+			awaitCloseAnimation : true
+		} );
+	}
+}
