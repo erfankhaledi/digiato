@@ -61,7 +61,25 @@ body {
     header {
         display: none !important;
     }
+    .homeCardsFooterBox {
+        padding-top: 30px !important;
+    }
 }
+@media (max-width: 730px ) {
+    .n-s {
+        display: none !important;
+    }
+}
+@media (max-width: 565px){
+    .n-s-1 {
+        display: none !important;
+    }
+}
+@media (max-width: 450px){
+    .n-450 {
+        display: none !important;
+    }
+}   
 @media (min-width: 767px) and (max-width: 12000px) {
     .navbar-toggler {
         display: none;
